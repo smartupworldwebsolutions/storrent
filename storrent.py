@@ -36,7 +36,7 @@ from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 # Constants & paths
 # ----------------------------------------------------------------------------
 APP_NAME = "STorrent Pro"
-APP_VERSION = "2.0.1"
+APP_VERSION = "2.0.2"
 
 # Peer flags differ between libtorrent versions (e.g. utp_socket is gone in 2.1) - never assume they exist.
 def _pf(*names):
@@ -66,6 +66,20 @@ def _data_dir():
 
 
 DATA_DIR = _data_dir()
+
+
+def _is_packaged():
+    # True when running as an MSIX package (Microsoft Store). Registry/firewall tricks do not work there.
+    if not IS_WIN:
+        return False
+    try:
+        n = ctypes.c_uint32(0)
+        return ctypes.windll.kernel32.GetCurrentPackageFullName(ctypes.byref(n), None) != 15700
+    except Exception:
+        return False
+
+
+IS_PACKAGED = _is_packaged()
 CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 STATE_DIR = os.path.join(DATA_DIR, "state")
 SESSION_FILE = os.path.join(DATA_DIR, "session.dat")
@@ -262,7 +276,7 @@ RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 
 def is_autostart():
-    if not IS_WIN:
+    if not IS_WIN or IS_PACKAGED:
         return False
     import winreg
     try:
@@ -274,7 +288,7 @@ def is_autostart():
 
 
 def set_autostart(enabled, minimized=True):
-    if not IS_WIN:
+    if not IS_WIN or IS_PACKAGED:
         return False
     import winreg
     try:
@@ -328,7 +342,7 @@ def set_keep_awake(on):
 
 def firewall_rule(add):
     """Adds/removes the inbound firewall rule. Shows one Windows admin (UAC) prompt."""
-    if not IS_WIN:
+    if not IS_WIN or IS_PACKAGED:
         return
     if add:
         params = (f'advfirewall firewall add rule name="{APP_NAME}" dir=in action=allow '
@@ -890,6 +904,9 @@ class PreferencesDialog(QDialog):
         c2 = self.chk("start_minimized", "Start minimized to the tray")
         if not IS_WIN:
             c1.setEnabled(False)
+        if IS_PACKAGED:
+            c1.setEnabled(False)
+            c1.setText("Start with Windows: turn on in Windows Settings > Apps > Startup")
             c2.setEnabled(False)
         gl.addWidget(c1)
         gl.addWidget(c2)
@@ -914,6 +931,14 @@ class PreferencesDialog(QDialog):
         lay.addStretch()
 
     def do_associate(self):
+        if IS_PACKAGED:
+            try:
+                os.startfile("ms-settings:defaultapps")
+            except OSError:
+                pass
+            QMessageBox.information(self, "File association",
+                                    "Windows Settings opened. Choose STorrent Pro as the default app for .torrent files and magnet links.")
+            return
         ok = register_associations()
         QMessageBox.information(self, "File association",
                                 "Done. .torrent files and magnet links now open in STorrent."
@@ -1010,7 +1035,7 @@ class PreferencesDialog(QDialog):
         pl.addWidget(self.chk("randomize_port_start", "Randomize port each start"), 1, 1)
         pl.addWidget(self.chk("enable_natpmp", "Enable NAT-PMP port mapping"), 2, 0)
         fw = self.chk("add_firewall_rule", "Add Windows Firewall exception")
-        fw.setEnabled(IS_WIN)
+        fw.setEnabled(IS_WIN and not IS_PACKAGED)
         pl.addWidget(fw, 2, 1)
         pl.addWidget(QLabel("Bind to network interface / VPN:"), 3, 0)
         pl.addWidget(self.line("bind_interface", placeholder="empty = any; e.g. 10.8.0.2 or VPN adapter name"), 3, 1)
