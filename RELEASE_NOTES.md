@@ -1,0 +1,7 @@
+Free, ad-free BitTorrent client for Windows by Smartupworld.
+
+**Install:** download **STorrent-Pro-Setup-2.0.0.exe** below and run it.
+
+Windows may show a blue "Windows protected your PC" screen because the installer is new and not signed yet: click **More info → Run anyway**.
+
+**What's new in 2.0.0:** single-window mode, start with Windows, light/dark theme fix, Program Files installer, every setting now works, torrent creator, RSS auto-download, scheduler, transfer cap, speed graph and more.
