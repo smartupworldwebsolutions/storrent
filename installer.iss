@@ -3,7 +3,7 @@
 ; .torrent + magnet associations, firewall rule, and an uninstaller.
 
 #define AppName "STorrent Pro"
-#define AppVersion "2.0.0"
+#define AppVersion "2.0.1"
 #define AppExe "STorrent.exe"
 
 [Setup]

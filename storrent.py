@@ -36,7 +36,17 @@ from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 # Constants & paths
 # ----------------------------------------------------------------------------
 APP_NAME = "STorrent Pro"
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.0.1"
+
+# Peer flags differ between libtorrent versions (e.g. utp_socket is gone in 2.1) - never assume they exist.
+def _pf(*names):
+    v = 0
+    for n in names:
+        v |= int(getattr(lt.peer_info, n, 0))
+    return v
+PF_SEED = _pf("seed")
+PF_UTP = _pf("utp_socket")
+PF_ENC = _pf("rc4_encrypted", "plaintext_encrypted")
 ORG = "Smartupworld"
 IS_WIN = sys.platform == "win32"
 MUTEX_NAME = "STorrentProMutex"          # the installer uses the same name (AppMutex)
@@ -2327,13 +2337,16 @@ class STorrentClient(QMainWindow):
 
     # ------------------------------------------------------------------ inspector
     def on_selection_changed(self):
-        h = self.get_selected_handle()
-        if h:
-            s = h.status()
-            self.chk_sequential.blockSignals(True)
-            self.chk_sequential.setChecked(bool(s.flags & lt.torrent_flags.sequential_download))
-            self.chk_sequential.blockSignals(False)
-            self.update_inspector(h, full=True)
+        try:
+            h = self.get_selected_handle()
+            if h:
+                s = h.status()
+                self.chk_sequential.blockSignals(True)
+                self.chk_sequential.setChecked(bool(s.flags & lt.torrent_flags.sequential_download))
+                self.chk_sequential.blockSignals(False)
+                self.update_inspector(h, full=True)
+        except Exception as e:
+            self.log(f"Could not show torrent details: {e}")
 
     def update_inspector(self, h, full=False):
         if not h.is_valid():
@@ -2391,11 +2404,11 @@ class STorrentClient(QMainWindow):
                 set_cell(self.peers_table, i, 3, fmt_speed(p.down_speed))
                 set_cell(self.peers_table, i, 4, fmt_speed(p.up_speed))
                 flags = []
-                if p.flags & lt.peer_info.seed:
+                if p.flags & PF_SEED:
                     flags.append("seed")
-                if p.flags & lt.peer_info.utp_socket:
+                if p.flags & PF_UTP:
                     flags.append("uTP")
-                if p.flags & (lt.peer_info.rc4_encrypted | lt.peer_info.plaintext_encrypted):
+                if p.flags & PF_ENC:
                     flags.append("enc")
                 set_cell(self.peers_table, i, 5, " ".join(flags))
 
@@ -2860,7 +2873,18 @@ def send_to_running_instance(args, wait_ms=700):
     return True
 
 
+def _log_uncaught(exc_type, exc, tb):
+    # PyQt6 aborts the whole app on an unhandled error inside a slot; log it instead.
+    try:
+        import traceback
+        with open(os.path.join(tempfile.gettempdir(), "storrent-error.log"), "a", encoding="utf-8") as f:
+            f.write("".join(traceback.format_exception(exc_type, exc, tb)) + "\n")
+    except Exception:
+        pass
+
+
 def main():
+    sys.excepthook = _log_uncaught
     args = sys.argv[1:]
     if IS_WIN:
         try:
