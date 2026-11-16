@@ -36,7 +36,7 @@ from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 # Constants & paths
 # ----------------------------------------------------------------------------
 APP_NAME = "STorrent Pro"
-APP_VERSION = "2.0.2"
+APP_VERSION = "2.0.3"
 
 # Peer flags differ between libtorrent versions (e.g. utp_socket is gone in 2.1) - never assume they exist.
 def _pf(*names):
@@ -1212,7 +1212,7 @@ class PreferencesDialog(QDialog):
 # ----------------------------------------------------------------------------
 STATES = ['Queued', 'Checking', 'Fetching metadata', 'Downloading', 'Finished', 'Seeding',
           'Allocating', 'Checking resume']
-NAV_KEYS = ["All", "Downloading", "Seeding", "Completed", "Active", "Inactive", "Paused", "Errors"]
+NAV_KEYS = ["All", "Downloading", "Seeding", "Completed", "Active", "Inactive", "Stopped", "Errors"]
 
 
 class STorrentClient(QMainWindow):
@@ -1485,7 +1485,7 @@ class STorrentClient(QMainWindow):
         om = mb.addMenu("&Options")
         self._menu_action(om, "Preferences...", "Ctrl+P", self.open_preferences)
         om.addSeparator()
-        self._menu_action(om, "Pause All", None, self.pause_all)
+        self._menu_action(om, "Stop All", None, self.pause_all)
         self._menu_action(om, "Resume All", None, self.resume_all)
         om.addSeparator()
         self._menu_action(om, "Toggle Dark / Light Theme", "Ctrl+T", self.toggle_theme)
@@ -1518,7 +1518,7 @@ class STorrentClient(QMainWindow):
                 ("Remove", lambda: self.remove_selected(False), "Remove from list"),
                 ("Remove + Data", lambda: self.remove_selected(True), "Remove and delete files"),
                 ("▶ Start", lambda: self.set_state_selected(False), "Start selected"),
-                ("⏸ Pause", lambda: self.set_state_selected(True), "Pause selected"),
+                ("■ Stop", lambda: self.set_state_selected(True), "Stop selected (stays in the list, press Start to resume)"),
                 ("▲", lambda: self.move_queue("up"), "Move up queue"),
                 ("▼", lambda: self.move_queue("down"), "Move down queue")):
             b = QPushButton(text)
@@ -1578,7 +1578,9 @@ class STorrentClient(QMainWindow):
         self.table.verticalHeader().setVisible(False)
         self.table.setColumnWidth(0, 38)
         self.table.setColumnWidth(3, 120)
-        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.table.setColumnWidth(1, 420)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        self.table.horizontalHeader().setStretchLastSection(True)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -1709,7 +1711,7 @@ class STorrentClient(QMainWindow):
         self._menu_action(m, "Add Torrent...", None, lambda: self.add_torrent_file())
         self._menu_action(m, "Add Magnet / URL...", None, lambda: self.add_magnet_link())
         m.addSeparator()
-        self._menu_action(m, "Pause All", None, self.pause_all)
+        self._menu_action(m, "Stop All", None, self.pause_all)
         self._menu_action(m, "Resume All", None, self.resume_all)
         self.act_tray_turtle = self._menu_action(m, "🐢 Limit speeds", None, self.toggle_turtle)
         self.act_tray_turtle.setCheckable(True)
@@ -2158,7 +2160,7 @@ class STorrentClient(QMainWindow):
         m.addSeparator()
         self._menu_action(m, "Start", None, lambda: self.set_state_selected(False))
         self._menu_action(m, "Force Start", None, lambda: self.set_state_selected(False, force=True))
-        self._menu_action(m, "Pause", None, lambda: self.set_state_selected(True))
+        self._menu_action(m, "Stop", None, lambda: self.set_state_selected(True))
         m.addSeparator()
         q = m.addMenu("Queue")
         for text, where in (("Move to Top", "top"), ("Move Up", "up"), ("Move Down", "down"), ("Move to Bottom", "bottom")):
@@ -2676,7 +2678,7 @@ class STorrentClient(QMainWindow):
             counts["Completed"] += complete
             counts["Active"] += active
             counts["Inactive"] += not active
-            counts["Paused"] += user_paused
+            counts["Stopped"] += user_paused
             counts["Errors"] += err
             if lbl:
                 label_counts[lbl] = label_counts.get(lbl, 0) + 1
@@ -2691,7 +2693,7 @@ class STorrentClient(QMainWindow):
             else:
                 show = {"All": True, "Downloading": not complete and not user_paused,
                         "Seeding": complete and not paused, "Completed": complete,
-                        "Active": active, "Inactive": not active, "Paused": user_paused, "Errors": err}.get(key, True)
+                        "Active": active, "Inactive": not active, "Stopped": user_paused, "Errors": err}.get(key, True)
             if show:
                 rows.append((h, s, ih, lbl, paused, err))
 
@@ -2723,7 +2725,7 @@ class STorrentClient(QMainWindow):
             elif paused and auto:
                 status = "Queued (seed)" if s.progress >= 1.0 else "Queued"
             elif paused:
-                status = "Paused" + (" (cap)" if ih in self.cap_paused else "")
+                status = "Stopped" + (" (cap)" if ih in self.cap_paused else "")
             else:
                 status = STATES[st] if st < len(STATES) else str(st)
                 if not auto:
