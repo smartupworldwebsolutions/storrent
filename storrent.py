@@ -36,7 +36,7 @@ from PyQt6.QtNetwork import QLocalServer, QLocalSocket
 # Constants & paths
 # ----------------------------------------------------------------------------
 APP_NAME = "STorrent Pro"
-APP_VERSION = "2.0.3"
+APP_VERSION = "2.0.4"
 
 # Peer flags differ between libtorrent versions (e.g. utp_socket is gone in 2.1) - never assume they exist.
 def _pf(*names):
@@ -505,6 +505,24 @@ def http_get(url, timeout=15):
     req = urllib.request.Request(url, headers={'User-Agent': f'{APP_NAME}/{APP_VERSION}'})
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read()
+
+
+def _ver_tuple(v):
+    return tuple(int(x) for x in re.findall(r"\d+", v)[:4])
+
+
+class UpdateWorker(QThread):
+    found = pyqtSignal(str)   # newest version string, only if newer than this one
+
+    def run(self):
+        try:
+            data = json.loads(http_get(
+                "https://api.github.com/repos/smartupworldwebsolutions/storrent/releases/latest", 10))
+            tag = str(data.get("tag_name", "")).lstrip("vV")
+            if tag and _ver_tuple(tag) > _ver_tuple(APP_VERSION):
+                self.found.emit(tag)
+        except Exception:
+            pass   # offline or rate-limited: stay silent
 
 
 class RssWorker(QThread):
@@ -1277,6 +1295,32 @@ class STorrentClient(QMainWindow):
         if self.config.get("rss_feeds"):
             QTimer.singleShot(5000, lambda: self.fetch_rss_feeds(silent=True))
         self.log(f"{APP_NAME} {APP_VERSION} started. Data folder: {DATA_DIR}")
+        self.update_worker = None
+        if not IS_PACKAGED and self.config.get("check_updates", True):
+            QTimer.singleShot(8000, self.check_for_updates)
+            self.update_timer = QTimer(self)
+            self.update_timer.timeout.connect(self.check_for_updates)
+            self.update_timer.start(12 * 3600 * 1000)
+
+    # ------------------------------------------------------------------ updates
+    def check_for_updates(self):
+        if self.update_worker is not None and self.update_worker.isRunning():
+            return
+        self.update_worker = UpdateWorker()
+        self.update_worker.found.connect(self.on_update_found)
+        self.update_worker.start()
+
+    def on_update_found(self, ver):
+        try:
+            if getattr(self, "update_label", None) is None:
+                self.update_label = QLabel()
+                self.update_label.setOpenExternalLinks(True)
+                self.statusBar().addPermanentWidget(self.update_label)
+            self.update_label.setText(
+                f"<a href='https://smartupworld.com/storrent/'>⬆ Update available: v{ver} — click to download</a>")
+            self.log(f"Update available: v{ver} (you have {APP_VERSION}). Download: https://smartupworld.com/storrent/")
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------ config
     def load_config(self):

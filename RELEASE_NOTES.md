@@ -1,8 +1,10 @@
 Free, ad-free BitTorrent client for Windows by Smartupworld.
 
-**Install:** download **STorrent-Pro-Setup-2.0.3.exe** below and run it.
+**Install:** download **STorrent-Pro-Setup-2.0.4.exe** below and run it.
 
 Windows may show a blue "Windows protected your PC" screen because the installer is new and not signed yet: click **More info → Run anyway**.
+
+**2.0.4:** the app now checks for new versions (once at startup, then every 12 hours) and shows "Update available" in the bottom bar with a download link. Nothing is installed automatically and no personal data is sent.
 
 **2.0.3:** the Name column can now be resized by dragging; the Pause button is now called Stop (it fully stops a torrent, downloading or seeding, and keeps it in the list until you press Start).
 
